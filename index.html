@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>掌上易安 - 完美角度版</title>
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; font-family: 'Microsoft YaHei', sans-serif; }
+        
+        #app-container {
+            position: relative; width: 100%; max-width: 580px; height: 100%; margin: 0 auto;
+            background-image: url('background.png'); background-size: cover; background-position: center;
+        }
+
+        #scale-wrapper {
+            position: relative; width: 100%; height: 100%;
+            transform: scale(0.85); transform-origin: center 60%; 
+        }
+
+        model-viewer { width: 100%; height: 115%; outline: none; }
+
+        .hitbox-layer {
+            position: absolute; top: 5%; left: 0; width: 100%; height: 100%; z-index: 20; pointer-events: none; 
+        }
+
+        .hitbox {
+            position: absolute; pointer-events: auto; cursor: pointer;
+            background-color: rgba(255, 0, 0, 0); /* 调试模式：红色 */
+           // border: 1px solid yellow;
+        }
+
+        /* 热区定位 */
+        #hit-head { top: 15%; left: 20%; width: 60%; height: 20%; }
+        #hit-mouth { top: 43%; left: 42%; width: 16%; height: 8%; z-index: 25; }
+        #hit-hand-right { top: 50%; left: 65%; width: 25%; height: 20%; }
+        #hit-arm-left { top: 50%; left: 10%; width: 25%; height: 20%; }
+        #hit-body { top: 50%; left: 35%; width: 30%; height: 40%; }
+
+        #dialog-box {
+            position: absolute; top: 17%; left: 50%; transform: translateX(-50%);
+            width: 80%; background: rgba(0, 20, 40, 0.85); border: 1px solid #00e5ff; color: #fff; 
+            padding: 15px; border-radius: 12px; text-align: center; display: none; z-index: 30; pointer-events: none;
+        }
+
+        #controls { position: absolute; bottom: 40px; width: 100%; text-align: center; z-index: 30; }
+        .cyber-btn { background: linear-gradient(45deg, #00e5ff, #2979ff); border: none; border-radius: 50px; padding: 12px 40px; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0, 229, 255, 0.4); }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="dialog-box">你好呀，我是易安！</div>
+
+    <div id="scale-wrapper">
+        <!-- 
+           注意：这里去掉了 rotation，也不需要手动写 min/max/orbit
+           一切交由下面的 JS 自动控制，防止冲突
+        -->
+        <model-viewer 
+            id="model"
+            src="model.glb" 
+            alt="Li Qingzhao" 
+            camera-controls 
+            disable-zoom 
+            disable-pan
+            shadow-intensity="1"
+            environment-image="neutral"
+            interpolation-decay="200"
+        >
+        </model-viewer>
+
+        <div class="hitbox-layer">
+            <div id="hit-head" class="hitbox" onclick="interact('head')"></div>
+            <div id="hit-mouth" class="hitbox" onclick="interact('mouth')"></div>
+            <div id="hit-hand-right" class="hitbox" onclick="interact('hand_right')"></div>
+            <div id="hit-arm-left" class="hitbox" onclick="interact('arm_left')"></div>
+            <div id="hit-body" class="hitbox" onclick="interact('body')"></div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button class="cyber-btn" onclick="sayHello()">👋 打个招呼</button>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // 🔧🔧🔧 核心配置区 (只改这里！) 🔧🔧🔧
+    // ==========================================
+    
+    // 如果人物初始向右偏，把这个改成 90
+    // 如果人物初始向左偏，把这个改成 -90
+    // 如果是背面，改成 180
+    const BASE_ANGLE = 90; 
+
+    // ==========================================
+    
+    const dialogBox = document.getElementById('dialog-box');
+    const modelViewer = document.getElementById('model');
+    let hideTimer = null;
+
+    // --- 初始化函数：自动设置角度和限制 ---
+    function initCamera() {
+        // 1. 设置初始视角
+        modelViewer.cameraOrbit = `${BASE_ANGLE}deg 75deg 105%`;
+        
+        // 2. 动态计算左右限制 (基准角度 ± 45度)
+        // 这样无论基准是多少，用户都只能左右转45度
+        const minAngle = BASE_ANGLE - 45;
+        const maxAngle = BASE_ANGLE + 45;
+        
+        modelViewer.minCameraOrbit = `${minAngle}deg 60deg auto`;
+        modelViewer.maxCameraOrbit = `${maxAngle}deg 95deg auto`;
+        
+        // 3. 强制更新一次
+        modelViewer.updateFraming();
+    }
+
+    // 模型加载完成后，立即执行初始化
+    modelViewer.addEventListener('load', initCamera);
+
+    // --- 交互文案 ---
+    const scripts = {
+        head: ["发型不能乱，这可是黑陶质感的发饰。", "哎呀，摸头长不高的！"],
+        mouth: ["嘘...我在构思《声声慢》的下一句。", "要听我晓雪唱首曲子吗？", "好想尝尝章丘的大葱呀~"],
+        hand_right: ["袖口里记录着章丘的历史。", "知否，知否，应是绿肥红瘦。"],
+        arm_left: ["左袖里藏着全息投影设备。", "百脉泉的水真清凉。"],
+        body: ["这身汉服是宋朝最新款！", "这是最新的防水布料。", "你也饿了吗？"]
+    };
+
+    function interact(part) {
+        const textList = scripts[part];
+        const text = textList[Math.floor(Math.random() * textList.length)];
+        showBubble(text);
+        speak(text);
+        modelViewer.style.transform = "scale(1.05)";
+        setTimeout(() => { modelViewer.style.transform = "scale(1)"; }, 200);
+    }
+
+    function showBubble(text) {
+        dialogBox.innerText = text;
+        dialogBox.style.display = 'block';
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => { dialogBox.style.display = 'none'; }, 3000);
+    }
+
+    function speak(text) {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'zh-CN'; u.rate = 1.3; u.pitch = 1.4;
+            window.speechSynthesis.speak(u);
+        }
+    }
+
+    // --- 新版打招呼：基于 BASE_ANGLE 摇摆 ---
+    function sayHello() {
+        const t = "各位评委老师好，我是赛博易安！";
+        showBubble(t);
+        speak(t);
+        
+        // 先向右摆 (基准 + 30度)
+        modelViewer.cameraOrbit = `${BASE_ANGLE + 30}deg 75deg 105%`;
+        
+        setTimeout(() => {
+            // 再向左摆 (基准 - 30度)
+            modelViewer.cameraOrbit = `${BASE_ANGLE - 30}deg 75deg 105%`;
+            
+            setTimeout(() => {
+                // 回正 (回到基准)
+                modelViewer.cameraOrbit = `${BASE_ANGLE}deg 75deg 105%`;
+            }, 600);
+        }, 600);
+    }
+
+    // --- 松手自动回正 (核心修复) ---
+    ['mouseup', 'touchend'].forEach(evt => {
+        document.addEventListener(evt, () => {
+            setTimeout(() => {
+                // 关键修复：回到 BASE_ANGLE，而不是 0deg
+                modelViewer.cameraOrbit = `${BASE_ANGLE}deg 75deg 105%`;
+            }, 100);
+        });
+    });
+
+</script>
+
+</body>
+</html>
